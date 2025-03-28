@@ -1,0 +1,20 @@
+{
+  "name": "tempokeep",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "inliner src/index.html > dist/index.html",
+    "push-pages": "gh-pages -d dist",
+    "deploy": "npm run build && npm run push-pages",
+    "serve": "http-server dist"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "gh-pages": "^6.3.0",
+    "http-server": "^14.1.1",
+    "inliner": "^1.13.1"
+  }
+}
