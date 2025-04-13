@@ -1,4 +1,27 @@
-<!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <style>.record-name{ font-size:18px;font-weight:bold;margin-bottom:8px;}.grid-container{ display:grid;grid-template-columns:repeat(auto-fit, minmax(30px, 1fr));gap:5px;margin-top:10px;}.grid-cell{ width:30px;height:30px;border:1px solid #ddd;background-color:#333;cursor:pointer;}.grid-cell.active{ background-color:#4caf50;}.grid-cell.highlight{ background-color:#ffeb3b;}.controls-container{ margin-top:10px;}button{ margin-right:5px;padding:5px 10px;cursor:pointer;}.player-container{ margin-bottom:20px;border:1px solid #ddd;padding:10px;background-color:#f9f9f9;border-radius:8px;}</style> <title>Rhythm Memorization App</title> </head> <body> <h1>Rhythm Memorization App</h1> <div id="player-container-1" class="player-container"></div> <div id="player-container-2" class="player-container"></div> <div id="player-container-3" class="player-container"></div> <script>class Audio { 
+<!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <style>*{ box-sizing:border-box;margin:0;padding:0;touch-action:none;}.record-name{ font-size:18px;font-weight:bold;margin-bottom:8px;}.grid-container{ display:grid;grid-auto-flow:column; grid-auto-columns:1fr; width:100%;height:30px; padding:0;margin:0;gap:0;max-width:600px;}.grid-cell{ display:flex;align-items:center;justify-content:center;margin:0;padding:0;height:100%;width:100%;border:1px solid #777474;background-color:#333;cursor:pointer;}.grid-cell.active{ background-color:#4caf50;}.grid-cell.highlight{ background-color:#ffeb3b;}.controls-container{ margin-top:10px;}button{ margin-right:5px;padding:5px 10px;cursor:pointer;}.player-container{ margin-bottom:20px;border:1px solid #ddd;padding:10px;background-color:#f9f9f9;border-radius:8px;}.timeline{ display:flex;align-items:center;justify-content:center;width:100%;height:30px;padding:0;margin:0;max-width:600px;position:relative;--offset:0 }.tick-container{ position:relative;width:100%;height:100%;background:#fdfdfd;border-bottom:1px solid #ccc;}.tick{ position:absolute;top:0;width:1px;height:12px;background:black;left:calc((var(--pos) + var(--offset)) * 100%);transform:translateX(-50%);}.note{ position:absolute;width:2px;top:50%;height:100%;background:none;left:calc((var(--pos) + var(--offset)) * 100%);transform:translate(-50%, -50%);display:flex;align-items:center;justify-content:center;}.circle::before{ content:'●';font-size:130%;}.dotted_circle::before{ content:'◌';font-size:95%;}.connector{ position:absolute;top:0;height:2px;background:black;left:calc((var(--start) + var(--offset)) * 100%);width:calc((var(--end) - var(--start)) * 100%);}</style> <title>Rhythm Memorization App</title> <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script> </head> <body> <h1>Rhythm Memorization App</h1> <div id="player-container-1" class="player-container"></div> <div id="player-container-2" class="player-container"></div> <div id="player-container-3" class="player-container"></div> <script>const symbols={dotted_circle:"◌",circle:"●",square:"■",triangle:"▲",diamond:"◆",cross:"✖",star:"★",bottom_bar:"▄"};</script> <script>const settings={active_color:"#778822",inactive_color:"#aaaaaa",playing_color:"#aabb33",schedule_ahead_time:.1};</script> <script>function el(tag, attributes = {}, ...children) { 
+    const element = document.createElement(tag); 
+    for (const [key, value] of Object.entries(attributes)) { 
+        if (key === "class") { 
+            element.className = value; 
+        } else if (key === "dataset") { 
+            Object.assign(element.dataset, value); 
+        } else if (key.startsWith("on") && typeof value === "function") { 
+            element.addEventListener(key.slice(2).toLowerCase(), value); 
+        } else if (key.startsWith("--")) { 
+            element.style.setProperty(key, value); 
+        } else { 
+            element.setAttribute(key, value); 
+        } 
+    } 
+    for (const child of children) { 
+        if (typeof child === "string") { 
+            element.appendChild(document.createTextNode(child)); 
+        } else if (child instanceof Node) { 
+            element.appendChild(child); 
+        } 
+    } 
+    return element; 
+}</script> <script>class Audio { 
     constructor() { 
         this.context = new (window.AudioContext || window.webkitAudioContext)(); 
         this.buffers = {}; // Stores loaded audio buffers 
@@ -64,16 +87,18 @@
         this.record = record; 
         this.noteInterval = this.calculateNoteInterval(); 
         this.audio = audio; 
-        this.lastStartStep = 0; 
-        this.lastStartTime = 0.0; 
-        this.currentStep = 0; 
+        // this.lastStartStep = 0; 
+        // this.lastStartTime = 0.0; 
+        this.nextStep = 0; 
         this.nextNoteTime = 0.0; 
         this.isPlaying = false; 
         this.isPaused = false; 
-        this.pauseOffset = 0.0; 
-        this.scheduleTimeouts = []; 
-        this.scheduledAudioNodes = []; 
+        // this.pauseOffset = 0.0; 
+        // this.scheduleTimeouts = []; 
+        // this.scheduledAudioNodes = []; 
         this.intervalId = null; 
+        this.lastHightlightedStep = null; 
+        this.lastPauseTime = 0.0; 
  
         // Set the container for the player 
         this.container = document.querySelector(containerSelector); 
@@ -82,21 +107,44 @@
         } 
  
         // Create the grid and controls 
-        this.createGrid(); 
+        // this.createGrid(); 
+        this.createTicks(); 
         this.createControls(); 
-        this.showRecordName(); // Show the record name in the UI 
+        this.showRecordName(); 
     } 
  
     calculateNoteInterval() { 
         return (60.0 / this.bpm) / this.record.stepsPerBeat; 
     } 
  
+    get currentTime() { 
+        return this.audio.context.currentTime 
+    } 
+ 
     // Display the record name in the UI 
     showRecordName() { 
-        const nameElement = document.createElement("div"); 
-        nameElement.className = "record-name"; 
-        nameElement.innerText = `Record: ${this.record.name}`; 
+        const nameElement = el("div", { class: "record-name" }, `Record: ${this.record.name}`); 
         this.container.prepend(nameElement); 
+    } 
+ 
+    createTicks() { 
+        const step = 1 / this.record.totalSteps; 
+        const offset = 0.5 * step; 
+        const wrap = (x) => ((x + offset) % 1) - offset; 
+        const is_active = (i) => this.record.getStepState(i); 
+        const ticksContainer = el("div", { class: "ticks-container" }, 
+            ...Array.from({ length: this.record.totalSteps }, (_, i) => 
+                el("div", { class: "tick", "--pos": wrap(i * step) }) 
+            ), 
+            ...Array.from({ length: this.record.totalSteps }, (_, i) => 
+                el("div", { class: "note", "--pos": wrap(i * step) }, is_active(i) ? el('div', { class: 'circle draggable' }) : el('div', { class: 'dotted_circle' })) 
+            ), 
+            ...Array.from({ length: this.record.beatsPerBar }, (_, i) => 
+                el("div", { class: "connector", "--start": i/this.record.beatsPerBar, "--end": (i+1)/this.record.beatsPerBar - step }) 
+            ) 
+        ); 
+        const timeline = el("div", { class: "timeline", "--offset": offset }, ticksContainer); 
+        this.container.appendChild(timeline); 
     } 
  
     createGrid() { 
@@ -109,9 +157,8 @@
             cell.classList.add("grid-cell"); 
             if (this.record.getStepState(i)) { 
                 cell.classList.add("active"); 
-                cell.style.backgroundColor = "#4caf50"; // Active color 
             } 
-            cell.style.width = `${100 / this.record.stepsPerBeat}%`; // Adjust width based on steps per beat 
+            cell.style.backgroundColor = this.record.getStepState(i) ? settings.active_color : settings.inactive_color; 
             cell.classList.add("grid-cell"); 
             cell.dataset.index = i; 
             cell.addEventListener("click", () => this.toggleCell(i, cell)); 
@@ -150,18 +197,18 @@
         if (newBPM < 30 || newBPM > 300) return; 
  
         console.log(`Changing BPM to ${newBPM}`); 
-        let was_playing = false; 
-        if (this.isPlaying) { 
-            this.pause(); 
-            was_playing = true; 
-        } 
+        // let was_playing = false; 
+        // if (this.isPlaying) { 
+        //     this.pause(); 
+        //     was_playing = true; 
+        // } 
  
         this.bpm = newBPM; 
         this.noteInterval = this.calculateNoteInterval(); 
  
-        if (was_playing) { 
-            this.start(); 
-        } 
+        // if (was_playing) { 
+        //     this.start(); 
+        // } 
     } 
  
     togglePlayPause() { 
@@ -177,15 +224,21 @@
     toggleCell(step, cell) { 
         this.record.toggleStep(step); 
         cell.classList.toggle("active"); 
-        cell.style.backgroundColor = this.record.getStepState(step) ? "#4caf50" : "#333"; 
+        cell.style.backgroundColor = this.record.getStepState(step) ? settings.active_color : settings.inactive_color; 
     } 
  
     start() { 
         if (this.isPlaying) return; 
- 
         this.isPlaying = true; 
-        this.nextNoteTime = this.audio.context.currentTime + this.pauseOffset * this.noteInterval; 
-        this.pauseOffset = 0.0; 
+ 
+        if (this.isPaused) { 
+            this.nextNoteTime += this.currentTime - this.lastPauseTime; 
+            this.isPaused = false; 
+        } else { 
+            this.nextNoteTime = this.currentTime; 
+        } 
+        // this.nextNoteTime = this.currentTime + this.pauseOffset * this.noteInterval; 
+        // this.pauseOffset = 0.0; 
  
         this.scheduleNextNotes(); 
         this.intervalId = setInterval(() => this.scheduleNextNotes(), 25); 
@@ -197,65 +250,66 @@
         clearInterval(this.intervalId); 
         this.isPlaying = false; 
         this.isPaused = true; 
+        this.lastPauseTime = this.currentTime; 
  
-        const elapsedTime = this.audio.context.currentTime - this.lastStartTime; 
-        this.pauseOffset = (this.nextNoteTime - this.audio.context.currentTime) / this.noteInterval; 
+        // const elapsedTime = this.currentTime - this.lastStartTime; 
+        // this.pauseOffset = (this.nextNoteTime - this.currentTime) / this.noteInterval; 
  
-        this.clearScheduledNotes(); 
+        // this.clearScheduledNotes(); 
     } 
  
     stop() { 
         clearInterval(this.intervalId); 
         this.isPlaying = false; 
         this.isPaused = false; 
-        this.currentStep = 0; 
-        this.pauseOffset = 0.0; 
+        this.nextStep = 0; 
+        // this.pauseOffset = 0.0; 
         this.playPauseBtn.innerText = "Play"; 
  
-        this.clearScheduledNotes(); 
-        this.highlightStep(-1); 
+        // this.clearScheduledNotes(); 
+        this.highlightStep(null); 
     } 
  
     scheduleNextNotes() { 
-        while (this.nextNoteTime < this.audio.context.currentTime + 0.1) { 
-            if (this.record.getStepState(this.currentStep)) { 
-                this.playNote(this.currentStep, this.nextNoteTime); 
+        while (this.nextNoteTime < this.currentTime + settings.schedule_ahead_time) { 
+            console.log(`Sched step=${this.nextStep} time=${this.nextNoteTime.toFixed(4)}s`); 
+            if (this.record.getStepState(this.nextStep)) { 
+                this.playNote(this.nextStep, this.nextNoteTime); 
             } 
             this.nextNoteTime += this.noteInterval; 
-            this.currentStep = (this.currentStep + 1) % this.record.totalSteps; 
+            this.nextStep = (this.nextStep + 1) % this.record.totalSteps; 
         } 
     } 
  
     playNote(step, time) { 
-        if (this.record.getStepState(step)) { 
-            // Use record.soundName to choose the buffer dynamically 
-            const source = this.audio.startBuffer(this.record.soundName, time); 
-            this.scheduledAudioNodes.push(source); 
+        const source = this.audio.startBuffer(this.record.soundName, time); 
+        // this.scheduledAudioNodes.push({source, time}); 
  
-            // Schedule visual update at the correct time 
-            const visualTimeout = setTimeout(() => { 
-                this.highlightStep(step); 
-            }, (time - this.audio.context.currentTime) * 1000); 
+        const visualTimeout = setTimeout(() => { 
+            this.highlightStep(step); 
+        }, (time - this.currentTime) * 1000); 
  
-            this.scheduleTimeouts.push(visualTimeout); 
-        } 
+        // this.scheduleTimeouts.push(visualTimeout); 
     } 
  
     highlightStep(step) { 
         const cells = this.container.querySelectorAll(".grid-cell"); 
         cells.forEach((cell, i) => { 
             cell.style.backgroundColor = 
-                i === step ? "#ffeb3b" : this.record.getStepState(i) ? "#4caf50" : "#333"; 
+                i === step ? settings.playing_color : this.record.getStepState(i) ? settings.active_color : settings.inactive_color; 
         }); 
+        this.lastHightlightedStep = step; 
     } 
  
     clearScheduledNotes() { 
-        this.scheduledAudioNodes.forEach((node) => { 
-            try { 
-                node.stop(); 
-                node.disconnect(); 
-            } catch (e) { 
-                console.error("Error stopping audio:", e); 
+        this.scheduledAudioNodes.forEach(({source, time}) => { 
+            if (time - this.currentTime > settings.schedule_ahead_time) { 
+                try { 
+                    source.stop(); 
+                    source.disconnect(); 
+                } catch (e) { 
+                    console.error("Error stopping audio:", e); 
+                } 
             } 
         }); 
         this.scheduledAudioNodes = []; 
@@ -263,7 +317,68 @@
         this.scheduleTimeouts.forEach((id) => clearTimeout(id)); 
         this.scheduleTimeouts = []; 
     } 
-}</script> <script>document.addEventListener("DOMContentLoaded", async () => { 
+ 
+    update() { 
+        this.highlightStep(this.lastHightlightedStep); 
+    } 
+}</script> <script>class Dragging { 
+    constructor(element) { 
+        this.dragging = false; 
+        this.dragged_element = null; 
+        this.start_x = 0; 
+        this.start_y = 0; 
+ 
+        this.setup(element || document.body); 
+ 
+        this.find_target = (event_target) => { event_target.closest(".draggable") }; 
+        this.move_element = (elem, x, y) => elem.style.transform = `translate(${x}px, ${y}px)`; 
+        this.drop_element = (elem) => elem.style.transform = ""; 
+    } 
+ 
+    setup(elem) { 
+        elem.addEventListener("pointerdown", (event) => this.start(event)); 
+        elem.addEventListener("pointermove", (event) => this.move(event)); 
+        elem.addEventListener("pointerup", () => this.stop()); 
+        elem.addEventListener("pointercancel", () => this.stop()); 
+    } 
+ 
+    start(event) { 
+        if (this.dragging) this.stop(); 
+        this.dragging = true; 
+        this.dragged_element = event.target; 
+        this.start_x = event.clientX; // - this.dragged_element.getBoundingClientRect().left; 
+        this.start_y = event.clientY; // - this.dragged_element.getBoundingClientRect().top; 
+    } 
+ 
+    move(event) { 
+        if (this.dragging) { 
+            event.preventDefault(); 
+ 
+            if (this.dragged_element) { 
+                const x = event.clientX - this.start_x; 
+                const y = event.clientY - this.start_y; 
+ 
+                this.move_element(this.dragged_element, x, y); 
+            } 
+        } 
+    } 
+ 
+    stop() { 
+        if (this.dragged_element) { 
+            this.drop_element(this.dragged_element); 
+        } 
+        this.dragging = false; 
+    } 
+}</script> <script>const players = []; 
+const dragging = new Dragging(); 
+ 
+function update_players() { 
+    players.forEach((player) => { 
+        player.update(); 
+    }); 
+} 
+ 
+document.addEventListener("DOMContentLoaded", async () => { 
     // Create audio instance and load sound files 
     const audio = new Audio(); 
     await audio.loadFiles({ 
@@ -276,9 +391,12 @@
     const record1 = new Record("Groove 1", "shake", 4, 4, [0, 4, 8, 12]); 
     const player1 = new Player(120, record1, "#player-container-1", audio); 
  
-    const record2 = new Record("Groove 2", "sangban", 3, 4, [0, 3, 6, 9]); 
-    const player2 = new Player(100, record2, "#player-container-2", audio); 
+    const record2 = new Record("Groove 2", "sangban", 4, 3, [0, 3, 6, 9]); 
+    const player2 = new Player(120, record2, "#player-container-2", audio); 
  
     const record3 = new Record("Groove 3", "kenkeni", 4, 4, [2, 6, 10, 14]); 
     const player3 = new Player(140, record3, "#player-container-3", audio); 
-});</script> </body> </html>
+ 
+    // Add players to the array 
+    players.push(player1, player2, player3); 
+});</script> <script>const gui=new dat.GUI;gui.addColor(settings,"active_color").name("active").onChange(update_players),gui.addColor(settings,"inactive_color").name("inactive").onChange(update_players),gui.addColor(settings,"playing_color").name("playing").onChange(update_players);</script> </body> </html>
